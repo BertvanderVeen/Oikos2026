@@ -1,0 +1,301 @@
+---
+title: "Beyond univariate analysis"
+subtitle: "Predicting species richness with model-based ordination"
+author: "Bert van der Veen"
+institute: "University of Bayreuth"
+date: ""
+knit: (function(input, ...) rmarkdown::render(input, output_dir = ".."))
+output:
+  beamer_presentation:
+    toc: false
+    slide_level: 2
+    latex_engine: lualatex
+    includes:
+      in_header: header.tex
+urlcolor: orange
+editor_options:
+  chunk_output_type: console
+header-includes:
+  - \usepackage{ulem}
+  - \usepackage{booktabs}
+  - \usepackage{longtable}
+  - \tcbuselibrary{skins}
+  - \usepackage{tikz}
+  - \usetikzlibrary{calc, fit, positioning,arrows,shapes,tikzmark,shadows}
+  - \newcommand{\highlight}[2]{\colorbox{#1!17}{$\vphantom{(^\top}#2$}}
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
+                      cache = TRUE, fig.align = "center")
+```
+
+```{r pb_sim_params, cache=TRUE, include=FALSE}
+# One simulated multispecies community, shared across the talk (opening
+# illustration, pb_figure, skellam_var_fig): each of m species has its own
+# intercept and slope on a hypothetical covariate x (logit link) -- a true
+# simulation of heterogeneous species responses, not a hand-crafted probability
+# vector or the degenerate homogeneous/Binomial case.
+set.seed(1)
+m_sim     <- 30
+beta0_sim <- rnorm(m_sim, 0, 1.8)
+beta1_sim <- rnorm(m_sim, 0.35, 0.7)   # mostly positive: mean richness rises with x
+```
+
+# Motivation
+
+## Modelling the process, not the summary
+
+\columnsbegin
+\column{0.54\textwidth}
+
+\footnotesize
+\begin{itemize}
+  \item Community ecology cares about \textbf{co-occurrence patterns}: which species are found together, and why
+  \item Richness is a \textbf{summary of co-occurrence}: literally a count of how many species co-occur
+\end{itemize}
+
+\pause
+
+\begin{itemize}
+  \item We know what drives co-occurrence: \textbf{shared environmental responses}, \textbf{residual correlation} (biotic interactions, unmeasured environment, \ldots)
+  \item Univariate analysis of richness \textbf{discards} exactly this information
+\end{itemize}
+\normalsize
+
+\column{0.42\textwidth}
+
+```{r process_illustration, fig.height=2.8, fig.width=2.1, cache=TRUE, dependson="pb_sim_params"}
+library(ggplot2); library(patchwork)
+x_grid <- seq(-6, 6, length.out = 200)
+p_ind  <- plogis(outer(x_grid, beta1_sim) +
+                 matrix(beta0_sim, nrow = length(x_grid), ncol = m_sim, byrow = TRUE))
+set.seed(2); show_spp <- sample(m_sim, 10)
+df_ind <- data.frame(x = rep(x_grid, 10), p = as.vector(p_ind[, show_spp]),
+                     spp = factor(rep(show_spp, each = length(x_grid))))
+df_sr  <- data.frame(x = x_grid, SR = rowSums(p_ind))
+
+p1 <- ggplot(df_ind, aes(x, p, color = spp)) +
+  geom_line(linewidth = 0.5, alpha = 0.8, show.legend = FALSE) +
+  labs(x = NULL, y = "P(present)", title = "Individual species") +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(size = 7.5))
+p2 <- ggplot(df_sr, aes(x, SR)) +
+  geom_line(linewidth = 0.9) +
+  labs(x = "Hypothetical covariate", y = "Richness", title = "Their joint pattern") +
+  theme_classic(base_size = 7) +
+  theme(plot.title = element_text(size = 7.5))
+p1 / p2
+```
+
+\columnsend
+
+\pause
+
+\begin{center}
+\textit{Richness discards the co-occurrence structure that made it interesting in the first place.}
+\end{center}
+
+# The problem
+
+## The standard approach
+
+Species richness is most often analyzed with count regression \footnotesize (O'Hara, 2005) \normalsize, with $\pi_{ij} = p(y_{ij}>0)$:
+
+\begin{equation}
+\log\{\mathams{E}(SR_i)\} = \log\Big\{\sum_{j=1}^{m} \pi_{ij}\Big\} = \alpha + \mathbf{x}_i^\top\boldsymbol{\beta}
+\end{equation}
+
+\pause
+
+For this to be successful we require four assumptions that are nearly always violated:
+
+\pause
+
+\begin{enumerate}
+  \item All species \textbf{respond identically} to the environment
+  \item Species are \textbf{independent} of each other
+  \item The species pool is \textbf{infinite} (Poisson/NB are unbounded)
+  \item The chosen distribution \textbf{is appropriate} for the data
+\end{enumerate}
+
+## Consequence: the wrong distribution
+
+Heterogeneous niches $\Rightarrow$ richness is \textbf{Poisson-Binomial}: \textbf{bounded} ($\leq m$) and \textbf{underdispersed}.
+
+\begin{equation}
+\alt<2->{\mathams{E}(SR_i) = \sum_j \pi_{ij}, \qquad \text{var}(SR_i) = \sum_j \pi_{ij}(1-\pi_{ij})}%
+{\mathams{E}(SR_i) = \sum_{j=1}^{m} \text{g}_j^{-1}(\mathbf{x}_i^\top\boldsymbol{\beta}_j)}
+\end{equation}
+
+\only<1>{\footnotesize Even if each species' response $\mathbf{x}_i^\top\boldsymbol{\beta}_j$ is \textbf{linear} in a covariate, each species contributes its own \textbf{component-wise} nonlinear curve: the summed richness gradient is effectively \textbf{semi-parametric}, not a single bent line.\normalsize}
+
+\vspace*{-\baselineskip}
+\pause
+
+```{r pb_figure, fig.height=1.8, fig.width=4.0, cache=TRUE, dependson="pb_sim_params"}
+# variance against mean, from the simulated community: Poisson-Binomial vs Poisson vs NB
+library(ggplot2); library(tidyr)
+phi <- 3
+x_grid <- seq(-8, 8, length.out = 300)
+eta <- outer(x_grid, beta1_sim) + matrix(beta0_sim, nrow = length(x_grid), ncol = m_sim, byrow = TRUE)
+p   <- plogis(eta)
+mean_x <- rowSums(p); var_x <- rowSums(p * (1 - p))
+df <- data.frame(mean = mean_x,
+                 `Poisson`           = mean_x,
+                 `Negative-binomial` = mean_x + mean_x^2/phi,
+                 `Poisson-Binomial`  = var_x,
+                 check.names = FALSE) |>
+  pivot_longer(-mean, names_to = "Distribution", values_to = "variance")
+df$Distribution <- factor(df$Distribution,
+  levels = c("Negative-binomial","Poisson","Poisson-Binomial"))
+cols <- c("Poisson"="#2166AC","Negative-binomial"="#B2182B","Poisson-Binomial"="grey30")
+# fixed label positions, hand-checked against the curves' actual values so text
+# sits in verified empty space rather than relying on repel force-balancing
+# (which kept placing labels on top of their own line in this small panel):
+#  - NB exits the y<=50 panel at mean=10.84 (solved exactly below); its whole
+#    visible segment sits left of that, so the label starts just past it, where
+#    no part of the (now off-panel) line can reach
+#  - Poisson is the y=mean line; label well above its right end, clear of NB
+#    (long since off-panel by mean=18) and of the low, flat Poisson-Binomial line
+#  - Poisson-Binomial stays low (<=~5); label to the right, above its curve but
+#    below the "theoretical max" annotation
+nb_exit <- uniroot(function(m) m + m^2/phi - 50, c(m_sim/4, 20))$root
+labels_manual <- data.frame(
+  mean     = c(nb_exit + 0.3, 18,  17),
+  variance = c(42,            28,  11),
+  label    = c("Negative-binomial", "Poisson", "Poisson-Binomial"),
+  Distribution = factor(c("Negative-binomial","Poisson","Poisson-Binomial"),
+                        levels = levels(df$Distribution)))
+ggplot(df, aes(mean, variance, color = Distribution)) +
+  geom_hline(yintercept = m_sim/4, linetype = "dotted", color = "grey55") +
+  annotate("text", x = min(mean_x)+3, y = m_sim/4 + 1.5, label = "theoretical max: m/4",
+           size = 2.7, hjust = 0, color = "grey45") +
+  geom_line(linewidth = 1) +
+  geom_text(data = labels_manual, aes(label = label), fontface = "bold",
+            size = 3, hjust = 0, show.legend = FALSE) +
+  scale_color_manual(values = cols, name = NULL) +
+  labs(x = "Mean species richness  E(SR)", y = "var(SR)") +
+  theme_classic(base_size = 10) +
+  theme(legend.position = "none") + ylim(0,50)
+```
+
+# Model the community
+
+## Model the community, not the richness
+
+A joint model relaxes the assumptions, and gets the process right, not just the prediction.
+
+\columnsbegin
+\column{0.50\textwidth}
+
+\begin{itemize}
+  \item \textbf{Species-specific} responses
+  \item \textbf{Dependence} via ordination
+  \item \textbf{Bounded} by $m$ species
+\end{itemize}
+
+\column{0.50\textwidth}
+
+\textbf{Any data type} with zero support
+
+\begin{equation}
+\mathams{E}(SR_i) = \sum_{j=1}^{m} \pi_{ij}
+\end{equation}
+
+\footnotesize
+\begin{tabular}{ll}
+\toprule
+Data type & $\pi_{ij} = p(y_{ij} > 0)$ \\
+\midrule
+Binary (Bernoulli)  & $\mu_{ij}$ \\
+Count (Poisson)     & $1 - e^{-\mu_{ij}}$ \\
+Ordinal             & $1 - p(\text{class } 0)$ \\
+Biomass (Tweedie)   & $1 - \text{Tw}(0;\mu,\phi,p)$ \\
+Cover (ord.\ beta)  & $1 - \rho_{ij}^0$ \\
+\bottomrule
+\end{tabular}
+\normalsize
+
+\columnsend
+
+## Predicting richness: \texttt{predictSR}
+
+Once richness is treated as Poisson-Binomial, its \textbf{full} distribution is available, not just a mean:
+
+\footnotesize
+```{r predictSR_demo, echo=TRUE, eval=FALSE}
+sr_pred <- predictSR(model, newX = newdata, level = 0)
+sr_pred$expected      # E[SR] with 95% CI
+sr_pred$predicted     # full Poisson-Binomial distribution
+```
+\normalsize
+
+\begin{itemize}
+  \item $\mathams{E}(SR_i) = \sum_j \pi_{ij}$: expected richness, with confidence intervals
+  \item the \textbf{mode} in closed form: the most probable integer count \tiny(\texttt{expected = "mode"})\normalsize
+  \item $p(SR_i \le c)$: probability richness is below any threshold \tiny(from \texttt{\$predicted})\normalsize
+\end{itemize}
+
+## Residual diagnostics for richness
+
+\footnotesize
+```{r residuals_demo, echo=TRUE, eval=FALSE}
+res <- residuals(sr_pred)  # Dunn-Smyth residuals
+plot(sr_pred)              # 3 diagnostic plots
+```
+\normalsize
+
+\begin{itemize}
+  \item \textbf{Dunn-Smyth} (randomized quantile) residuals, computed from each site's predicted Poisson-Binomial distribution
+  \item Check the \textbf{richness-level} fit: well-behaved residuals and a straight Q-Q line confirm the Poisson-Binomial fit
+  \item Available for the sites the model was fitted to
+\end{itemize}
+
+## Calibrating richness predictions with AUC {.shrink}
+
+Richness is built from many individual presence/absence calls: $\mathams{E}(SR_i) = \sum_j \pi_{ij}$
+
+\footnotesize
+```{r auc_demo, echo=TRUE, eval=FALSE}
+goodnessOfFit(model, measure = "AUC")  # conditional on LVs
+# latent variables at zero
+pred0 <- predict(model, level = 0, type = "response",
+                 ordinal.cat = 1)
+goodnessOfFit(model, pred = pred0, measure = "AUC")
+```
+\normalsize
+
+\pause
+
+\begin{itemize}
+  \item \textbf{AUC} asks: does a species' predicted probability of presence actually rank presences above absences? \tiny(threshold-free, rank-based)\normalsize
+  \item If the species-level probabilities \textbf{can't discriminate} presence from absence, richness built by summing them inherits that unreliability
+\end{itemize}
+
+\pause
+
+\begin{itemize}
+  \item Complements Dunn-Smyth residuals: those check the \textbf{richness-level} fit; AUC quantifies predictive capability
+\end{itemize}
+
+# Practical
+
+## The practical {.shrink}
+
+\textbf{Data}: Skabbholmen (Stockholm archipelago), \textbf{ordinal cover classes} along an elevation gradient on a rising shoreline, surveyed in 1978 and 1984
+
+\bigskip
+
+\textbf{What we will do}:
+
+\begin{enumerate}
+  \item Fit a multispecies model with species-specific responses
+  \item Predict richness with \texttt{predictSR} and check residuals
+  \item Calibrate with AUC
+  \item Add a year effect with constrained ordination
+  \item Compare against a naive Poisson GLM 
+  \item Get composition from the same model
+  \item Q and A, alternative dataset, whatever you want
+\end{enumerate}

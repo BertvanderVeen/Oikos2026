@@ -1,0 +1,9 @@
+.Rhistory
+.RData
+.Rproj.user/
+*_cache/
+*_files/
+*.aux
+*.log
+*.knit.md
+/practical.tex
