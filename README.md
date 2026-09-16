@@ -12,8 +12,8 @@ Species richness is one of the most commonly analysed metrics in community ecolo
 
 ## Materials
 
-- `presentation_short.pdf`: introductory slides (source in `presentation/`)
-- `practical.Rmd` / `practical.pdf`: the practical, analysing species richness of the Skabbholmen vegetation data with `gllvm`
+- [`presentation_short.pdf`](presentation_short.pdf): introductory slides (source in [`presentation/`](presentation/))
+- [`practical.Rmd`](practical.Rmd) / [`practical.pdf`](practical.pdf): the practical, analysing species richness of the Skabbholmen vegetation data with `gllvm`
 
 ## Requirements
 
