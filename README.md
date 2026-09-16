@@ -4,6 +4,8 @@ Lunchtime workshop at the [Joint NSO–GfÖ Conference 2026](https://nordicsocie
 
 **When:** Thursday 17 September 2026, 12:30–14:00
 
+**Where:** Room 208+209, Odeon
+
 **Organiser:** [Bert van der Veen](https://bertvanderveen.github.io/) (bert.van-der-veen@uni-bayreuth.de)
 
 ## About
