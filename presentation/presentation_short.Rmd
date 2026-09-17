@@ -220,13 +220,53 @@ Cover (ord.\ beta)  & $1 - \rho_{ij}^0$ \\
 
 \columnsend
 
+## The community model is a GLLVM {.shrink}
+
+Richness is predicted from each species' response in this model:
+
+\vspace*{-0.5\baselineskip}
+\[
+g\{\mathams{E}(y_{ij} \mid \mathbf{u}_i)\} = \beta_{0j} + \underbrace{\mathbf{x}_i^\top\boldsymbol{\beta}_j}_{\text{\scriptsize species-specific responses}} + \underbrace{\mathbf{u}_i^\top\boldsymbol{\gamma}_j}_{\text{\scriptsize dependence via ordination}}
+\]
+
+\columnsbegin
+\column[t]{0.46\textwidth}
+
+\footnotesize
+The latent variables $\mathbf{u}_i$ give model-based ordination:
+
+\begin{itemize}
+  \item $\mathbf{u}_i = \boldsymbol{\epsilon}_i$: \textbf{unconstrained} \tiny(\texttt{num.lv})\footnotesize
+  \item $\mathbf{u}_i = \mathbf{B}^\top\mathbf{x}_i$: \textbf{constrained} \tiny(\texttt{num.RR})\footnotesize
+  \item $\mathbf{u}_i = \mathbf{B}^\top\mathbf{x}_i + \boldsymbol{\epsilon}_i$: \textbf{concurrent} \tiny(\texttt{num.lv.c})\footnotesize
+\end{itemize}
+
+```{r gllvm_demo, echo=TRUE, eval=FALSE}
+gllvm(Y, X, num.lv.c = 2)
+```
+\normalsize
+
+\column[t]{0.54\textwidth}
+
+\footnotesize
+\begin{itemize}
+  \item \textbf{Facilitate sparse data} by using ordination (fewer parameters)
+  \item \textbf{Incorporate random effects} to accommodate hierarchical study designs
+  \item \textbf{Quantify uncertainty} with confidence intervals
+  \item \textbf{Predict} community composition
+  \item \textbf{Residual diagnostics} for model validation
+\end{itemize}
+\normalsize
+
+\columnsend
+
 ## Predicting richness: \texttt{predictSR}
 
 Once richness is treated as Poisson-Binomial, its \textbf{full} distribution is available, not just a mean:
 
 \footnotesize
 ```{r predictSR_demo, echo=TRUE, eval=FALSE}
-sr_pred <- predictSR(model, newX = newdata, level = 0)
+sr_pred <- predictSR(model)
 sr_pred$expected      # E[SR] with 95% CI
 sr_pred$predicted     # full Poisson-Binomial distribution
 ```
@@ -261,9 +301,8 @@ Richness is built from many individual presence/absence calls: $\mathams{E}(SR_i
 ```{r auc_demo, echo=TRUE, eval=FALSE}
 goodnessOfFit(model, measure = "AUC")  # conditional on LVs
 # latent variables at zero
-pred0 <- predict(model, level = 0, type = "response",
-                 ordinal.cat = 1)
-goodnessOfFit(model, pred = pred0, measure = "AUC")
+predict(model, level = 0, type = "response")
+goodnessOfFit(model, measure = "AUC")
 ```
 \normalsize
 
